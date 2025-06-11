@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🎵 Voice Song Identifier</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen">
+
+  <div class="bg-gray-800 p-8 rounded-2xl shadow-xl w-full max-w-md text-center space-y-6">
+    <h1 class="text-2xl font-bold tracking-wide">🎙️ Identify a Song by Voice</h1>
+
+    <button id="recordBtn" class="bg-blue-600 hover:bg-blue-700 transition text-white font-medium px-6 py-3 rounded-xl focus:outline-none">
+      🎤 Start Recording
+    </button>
+
+    <div id="status" class="text-sm mt-2 text-gray-400">Press the button and hum or sing for 5 seconds...</div>
+
+    <div class="mt-6">
+      <p class="text-gray-400 text-sm mb-1">Prediction:</p>
+      <p id="result" class="text-xl font-semibold text-green-400">-</p>
+    </div>
+  </div>
+
+  <script>
+    let isRecording = false;
+    const recordBtn = document.getElementById('recordBtn');
+    const resultEl = document.getElementById('result');
+    const statusEl = document.getElementById('status');
+
+    let mediaRecorder;
+    let chunks = [];
+
+    recordBtn.onclick = async () => {
+      if (isRecording) return;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      chunks = [];
+
+      statusEl.textContent = "🎙️ Recording... (5 seconds)";
+      recordBtn.disabled = true;
+      recordBtn.textContent = "⏳ Recording...";
+
+      mediaRecorder.ondataavailable = e => chunks.push(e.data);
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/wav' });
+        sendToBackend(blob);
+      };
+
+      mediaRecorder.start();
+
+      setTimeout(() => {
+        mediaRecorder.stop();
+        stream.getTracks().forEach(track => track.stop());
+        isRecording = false;
+        recordBtn.disabled = false;
+        recordBtn.textContent = "🎤 Start Recording";
+        statusEl.textContent = "⏱️ Processing audio...";
+      }, 5000);
+
+      isRecording = true;
+    };
+
+    async function sendToBackend(audioBlob) {
+      const formData = new FormData();
+      formData.append("file", audioBlob, "audio.wav");
+
+      try {
+        const response = await fetch("http://localhost:8000/predict/", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await response.json();
+        const predicted = data.prediction || "Unknown";
+        resultEl.textContent = predicted;
+
+        statusEl.textContent = "✅ Prediction received";
+
+        // Text-to-Speech
+        const utterance = new SpeechSynthesisUtterance("This sounds like " + predicted);
+        utterance.lang = 'en-US';
+        speechSynthesis.speak(utterance);
+      } catch (error) {
+        console.error("Error:", error);
+        resultEl.textContent = "⚠️ Error predicting";
+        statusEl.textContent = "Something went wrong!";
+      }
+    }
+  </script>
+</body>
+</html>
